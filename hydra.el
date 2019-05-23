@@ -506,8 +506,10 @@ Remove :color key. And sort the plist alphabetically."
   "Whether to hide hint when we next return to the command loop.
 See `hydra--start-tracking-hint'.")
 
-(defun hydra--should-hide-hint ()
-  (setq hydra--hide-hint t))
+(defun hydra--should-hide-hint (&optional now)
+  (setq hydra--hide-hint t)
+  (when now
+    (hydra--hide-hint-maybe)))
 
 (defun hydra--should-keep-hint ()
   (setq hydra--hide-hint nil))
@@ -1251,6 +1253,7 @@ Cancel the previous `hydra-timeout'."
    `(lambda ()
       ,(when function
          `(funcall ,function))
+      (hydra--should-hide-hint 'now)
       (hydra-keyboard-quit)))
   (timer-activate hydra-timeout-timer))
 
