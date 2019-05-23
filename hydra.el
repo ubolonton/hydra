@@ -188,6 +188,7 @@ warn: keep KEYMAP and issue a warning instead of running the command."
 (defun hydra-amaranth-warn ()
   "Issue a warning that the current input was ignored."
   (interactive)
+  (hydra--should-keep-hint)
   (message hydra-amaranth-warn-message))
 
 ;;* Customize
@@ -367,6 +368,7 @@ Exitable only through a blue head.")
 (defun hydra--universal-argument (arg)
   "Forward to (`universal-argument' ARG)."
   (interactive "P")
+  (hydra--should-keep-hint)
   (setq prefix-arg (if (consp arg)
                        (list (* 4 (car arg)))
                      (if (eq arg '-)
@@ -376,6 +378,7 @@ Exitable only through a blue head.")
 (defun hydra--digit-argument (arg)
   "Forward to (`digit-argument' ARG)."
   (interactive "P")
+  (hydra--should-keep-hint)
   (let* ((char (if (integerp last-command-event)
                    last-command-event
                  (get last-command-event 'ascii-character)))
@@ -395,6 +398,7 @@ Exitable only through a blue head.")
 (defun hydra--negative-argument (arg)
   "Forward to (`negative-argument' ARG)."
   (interactive "P")
+  (hydra--should-keep-hint)
   (setq prefix-arg (cond ((integerp arg) (- arg))
                          ((eq arg '-) nil)
                          (t '-))))
@@ -410,6 +414,7 @@ Exitable only through a blue head.")
   "Repeat last command with last prefix arg.
 When ARG is non-nil, use that instead."
   (interactive "p")
+  (hydra--should-keep-hint)
   (if (eq arg 1)
       (unless (string-match "hydra-repeat$" (symbol-name last-command))
         (setq hydra-repeat--command last-command)
@@ -497,6 +502,39 @@ Remove :color key. And sort the plist alphabetically."
 
 (defalias 'hydra--imf #'list)
 
+(defvar hydra--hide-hint t
+  "Whether to hide hint when we next return to the command loop.
+See `hydra--start-tracking-hint'.")
+
+(defun hydra--should-hide-hint ()
+  (setq hydra--hide-hint t))
+
+(defun hydra--should-keep-hint ()
+  (setq hydra--hide-hint nil))
+
+(defun hydra--start-tracking-hint ()
+  "Set up for body, or non-exiting head.
+
+When a hint is shown, hydra adds temporary book-keepings.
+
+In `pre-command-hook', the hint is requested to be hidden when the command is
+done, in `post-command-hook'.  Bodies of newly summoned hydras and non-exiting
+heads override the above to keep the hint alive.
+
+When all of them are defeated, the hint is hidden and book-keepings are removed."
+  (hydra--should-keep-hint)
+  (add-hook 'pre-command-hook #'hydra--should-hide-hint)
+  (add-hook 'post-command-hook #'hydra--hide-hint-maybe))
+
+(defun hydra--hide-hint-maybe ()
+  "Hide hint and clean up temporary book-keepings.
+See `hydra--start-tracking-hint'."
+  (when hydra--hide-hint
+    (funcall
+     (nth 2 (assoc hydra-hint-display-type hydra-hint-display-alist)))
+    (remove-hook 'pre-command-hook #'hydra--should-hide-hint)
+    (remove-hook 'post-command-hook #'hydra--hide-hint-maybe)))
+
 (defun hydra-default-pre ()
   "Default setup that happens in each head before :pre."
   (when (eq input-method-function 'key-chord-input-method)
@@ -523,10 +561,6 @@ Remove :color key. And sort the plist alphabetically."
   (cancel-timer hydra-timeout-timer)
   (cancel-timer hydra-message-timer)
   (setq hydra-curr-map nil)
-  (unless (and hydra--ignore
-               (null hydra--work-around-dedicated))
-    (funcall
-     (nth 2 (assoc hydra-hint-display-type hydra-hint-display-alist))))
   nil)
 
 (defvar hydra-head-format "[%s]: "
@@ -940,6 +974,7 @@ KEY is forwarded to `plist-get'."
            (message (eval hint)))
           (t
            (when hydra-is-helpful
+             (hydra--start-tracking-hint)
              (funcall
               (nth 1 (assoc hydra-hint-display-type hydra-hint-display-alist))
               (eval hint)))))))
